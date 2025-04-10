@@ -42,6 +42,12 @@ mv .env.example .env
 python crawl_docs.py
 ```
 
+- Run RAG
+
+```bash
+python agent.py
+```
+
 **Adding new package**
 
 - Add it into `requirements.in`
