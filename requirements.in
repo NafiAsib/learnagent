@@ -1,0 +1,4 @@
+psycopg[binary,pool]
+crawl4ai
+dotenv
+aiohttp
