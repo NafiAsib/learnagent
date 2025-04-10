@@ -11,7 +11,7 @@
 
 ```bash
 python3 -m venv venv
-./venv/bin/activate
+source venv/bin/activate
 ```
 
 - Install dependencies
@@ -35,3 +35,9 @@ docker compose up -d
 ```bash
 python crawl_docs.py
 ```
+
+**Adding new package**
+
+- Add it into `requirements.in`
+- Update requirements, `pip-compile requirements.in`
+- Install package, `pip install -r requirements.txt`

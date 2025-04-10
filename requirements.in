@@ -2,3 +2,9 @@ psycopg[binary,pool]
 crawl4ai
 dotenv
 aiohttp
+watchdog
+streamlit
+pydantic_ai
+asyncpg
+logfire
+pip-tools
