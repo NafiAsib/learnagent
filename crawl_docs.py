@@ -1,6 +1,6 @@
 import os
-import sys
 import json
+import aiohttp
 import asyncio
 import requests
 from xml.etree import ElementTree
@@ -9,24 +9,25 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 from dotenv import load_dotenv
-
 import psycopg_pool
-
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
-# from openai import AsyncOpenAI
-# from supabase import create_client, Client
 
 load_dotenv()
 
-# Initialize OpenAI and Supabase clients
-# openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-# supabase: Client = create_client(
-#     os.getenv("SUPABASE_URL"),
-#     os.getenv("SUPABASE_SERVICE_KEY")
-# )
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+LLM_MODEL = os.getenv('LLM_MODEL')
+EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL')
+EMBEDDING_DIMENSIONS = os.getenv('EMBEDDING_DIMENSIONS')
+SITEMAP_URL = os.getenv('SITEMAP_URL')
+SOURCE_NAME = os.getenv('SOURCE_NAME')
+DB_HOST = os.getenv('DB_HOST')
+DB_PORT = os.getenv('DB_PORT')
+DB_USER = os.getenv('DB_USER')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
+DB_NAME = os.getenv('DB_NAME')
 
-import aiohttp
-OLLAMA_BASE_URL = "http://localhost:11434"
+if not SITEMAP_URL or not LLM_MODEL or not EMBEDDING_MODEL or not EMBEDDING_DIMENSIONS or not DB_HOST or not DB_PORT or not DB_USER or not DB_PASSWORD or not DB_NAME:
+    raise ValueError('Set environment variables')
 
 @dataclass
 class ProcessedChunk:
@@ -83,28 +84,6 @@ def chunk_text(text: str, chunk_size: int = 5000) -> List[str]:
 
     return chunks
 
-# async def get_title_and_summary(chunk: str, url: str) -> Dict[str, str]:
-#     """Extract title and summary using GPT-4."""
-#     system_prompt = """You are an AI that extracts titles and summaries from documentation chunks.
-#     Return a JSON object with 'title' and 'summary' keys.
-#     For the title: If this seems like the start of a document, extract its title. If it's a middle chunk, derive a descriptive title.
-#     For the summary: Create a concise summary of the main points in this chunk.
-#     Keep both title and summary concise but informative."""
-    
-#     try:
-#         response = await openai_client.chat.completions.create(
-#             model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
-#             messages=[
-#                 {"role": "system", "content": system_prompt},
-#                 {"role": "user", "content": f"URL: {url}\n\nContent:\n{chunk[:1000]}..."}  # Send first 1000 chars for context
-#             ],
-#             response_format={ "type": "json_object" }
-#         )
-#         return json.loads(response.choices[0].message.content)
-#     except Exception as e:
-#         print(f"Error getting title and summary: {e}")
-#         return {"title": "Error processing title", "summary": "Error processing summary"}
-
 async def get_title_and_summary(chunk: str, url: str) -> Dict[str, str]:
     """Extract title and summary using local LLM."""
     system_prompt = """You are an AI that extracts titles and summaries from documentation chunks.
@@ -133,12 +112,10 @@ async def get_title_and_summary(chunk: str, url: str) -> Dict[str, str]:
                     
                     # Get raw response text first
                     raw_text = await response.text()
-                    print("Raw response:", raw_text)
                     
                     try:
                         result = json.loads(raw_text)
                         content = result.get("message", {}).get("content", "{}")
-                        print("Content to parse:", content)
                         
                         return json.loads(content)
                     except json.JSONDecodeError as e:
@@ -165,10 +142,10 @@ async def get_embedding(text: str) -> List[float]:
                     return result["embedding"]
                 else:
                     print(f"Error getting embedding: {response.status}")
-                    return [0] * 768  # Adjust dimension based on model (likely smaller than OpenAI)
+                    return [0] * EMBEDDING_DIMENSIONS  # Adjust dimension based on model (likely smaller than OpenAI)
     except Exception as e:
         print(f"Error getting embedding: {e}")
-        return [0] * 768  # Adjust dimension based on your local model # Return zero vector on error
+        return [0] * EMBEDDING_DIMENSIONS  # Adjust dimension based on your local model # Return zero vector on error
 
 async def process_chunk(chunk: str, chunk_number: int, url: str, pool) -> ProcessedChunk:
     """Process a single chunk of text."""
@@ -180,7 +157,7 @@ async def process_chunk(chunk: str, chunk_number: int, url: str, pool) -> Proces
     
     # Create metadata
     metadata = {
-        "source": "pydantic_ai_docs",
+        "source": SOURCE_NAME,
         "chunk_size": len(chunk),
         "crawled_at": datetime.now(timezone.utc).isoformat(),
         "url_path": urlparse(url).path
@@ -203,15 +180,15 @@ async def insert_chunk(chunk: ProcessedChunk, pool):
             async with conn.cursor() as cur:
                 # Ensure vector dimensions match
                 embedding = chunk.embedding
-                if len(embedding) != 768:
+                if len(embedding) != EMBEDDING_DIMENSIONS:
                     print(f"Embedding dimension mismatch for chunk {chunk.chunk_number} of {chunk.url}")
-                    # Adjust to exactly 768 dimensions
-                    if len(embedding) < 768:
+                    # Adjust to exactly EMBEDDING_DIMENSIONS dimensions
+                    if len(embedding) < EMBEDDING_DIMENSIONS:
                         print(f"Embedding is too short, padding with zeros")
-                        embedding = embedding + [0] * (768 - len(embedding))
+                        embedding = embedding + [0] * (EMBEDDING_DIMENSIONS - len(embedding))
                     else:
-                        print(f"Embedding is too long, truncating to 768 dimensions")
-                        embedding = embedding[:768]
+                        print(f"Embedding is too long, truncating to {EMBEDDING_DIMENSIONS} dimensions")
+                        embedding = embedding[:EMBEDDING_DIMENSIONS]
                 
                 await cur.execute(
                     """
@@ -235,45 +212,7 @@ async def insert_chunk(chunk: ProcessedChunk, pool):
         print(f"Error inserting chunk: {e}")
         return None
     
-# async def insert_chunk(chunk: ProcessedChunk):
-#     """Insert a processed chunk into Supabase."""
-#     try:
-#         data = {
-#             "url": chunk.url,
-#             "chunk_number": chunk.chunk_number,
-#             "title": chunk.title,
-#             "summary": chunk.summary,
-#             "content": chunk.content,
-#             "metadata": chunk.metadata,
-#             "embedding": chunk.embedding
-#         }
-        
-#         result = supabase.table("site_pages").insert(data).execute()
-#         print(f"Inserted chunk {chunk.chunk_number} for {chunk.url}")
-#         return result
-#     except Exception as e:
-#         print(f"Error inserting chunk: {e}")
-#         return None
 
-# async def process_and_store_document(url: str, markdown: str):
-#     """Process a document and store its chunks in parallel."""
-#     print(f"Started processing {url}")
-#     # Split into chunks
-#     chunks = chunk_text(markdown)
-    
-#     # Process chunks in parallel
-#     tasks = [
-#         process_chunk(chunk, i, url) 
-#         for i, chunk in enumerate(chunks)
-#     ]
-#     processed_chunks = await asyncio.gather(*tasks)
-    
-#     # Store chunks in parallel
-#     insert_tasks = [
-#         insert_chunk(chunk) 
-#         for chunk in processed_chunks
-#     ]
-#     await asyncio.gather(*insert_tasks)
 
 async def process_and_store_document(url: str, markdown: str, pool):
     """Process a document and store its chunks in parallel."""
@@ -332,9 +271,8 @@ async def crawl_parallel(urls: List[str], pool, max_concurrent: int = 5):
 
 def get_docs_urls() -> List[str]:
     """Get URLs from given docs sitemap."""
-    sitemap_url = "https://ai.pydantic.dev/sitemap.xml"
     try:
-        response = requests.get(sitemap_url)
+        response = requests.get(SITEMAP_URL)
         response.raise_for_status()
         
         # Parse the XML
@@ -364,7 +302,7 @@ async def main():
     pool = await init_db_connection()
     
     # Clear existing data
-    # await clear_existing_data(pool)
+    await clear_existing_data(pool)
     
     # Get URLs from given docs sitemap
     urls = get_docs_urls()
@@ -378,7 +316,7 @@ async def main():
 async def init_db_connection():
     # Initialize database connection pool
     return psycopg_pool.AsyncConnectionPool(
-        "host=localhost port=5432 dbname=rag user=pg password=rag01",
+        f"host={DB_HOST} port={DB_PORT} dbname={DB_NAME} user={DB_USER} password={DB_PASSWORD}",
         min_size=1,
         max_size=10
     )

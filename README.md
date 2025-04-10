@@ -30,6 +30,12 @@ docker compose up -d
 
 *LLM & Embedding model will be auto pulled first, if not already in Ollama*
 
+- Create `.env`
+
+```bash
+mv .env.example .env
+```
+
 - Crawl a website
 
 ```bash
