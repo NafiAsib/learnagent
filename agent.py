@@ -19,9 +19,17 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 load_dotenv()
 
-OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
-LLM_MODEL = os.getenv('LLM_MODEL', 'llama3.2')
-EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'nomic-embed-text')
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL')
+LLM_MODEL = os.getenv('LLM_MODEL')
+EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL')
+EMBEDDING_DIMENSIONS = int(os.getenv('EMBEDDING_DIMENSIONS'))
+SITEMAP_URL = os.getenv('SITEMAP_URL')
+SOURCE_NAME = os.getenv('SOURCE_NAME')
+DB_HOST = os.getenv('DB_HOST')
+DB_PORT = os.getenv('DB_PORT')
+DB_USER = os.getenv('DB_USER')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
+DB_NAME = os.getenv('DB_NAME')
 
 client = OpenAIModel(
     model_name=LLM_MODEL, provider=OpenAIProvider(base_url=f'{OLLAMA_BASE_URL}/v1')
@@ -233,11 +241,11 @@ async def database_connect() -> AsyncGenerator[asyncpg.Pool, None]:
     logfire.info("Starting database_connect")
     # Database connection parameters from compose.yml
     db_config = {
-        'host': 'localhost',
-        'port': 5432,
-        'user': 'pg',
-        'password': 'rag01',
-        'database': 'rag'
+        'host': DB_HOST,
+        'port': DB_PORT,
+        'user': DB_USER,
+        'password': DB_PASSWORD,
+        'database': DB_NAME
     }
     
     try:
