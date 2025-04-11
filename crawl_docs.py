@@ -14,10 +14,10 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 
 load_dotenv()
 
-OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL')
 LLM_MODEL = os.getenv('LLM_MODEL')
 EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL')
-EMBEDDING_DIMENSIONS = os.getenv('EMBEDDING_DIMENSIONS')
+EMBEDDING_DIMENSIONS = int(os.getenv('EMBEDDING_DIMENSIONS'))
 SITEMAP_URL = os.getenv('SITEMAP_URL')
 SOURCE_NAME = os.getenv('SOURCE_NAME')
 DB_HOST = os.getenv('DB_HOST')
@@ -97,7 +97,7 @@ async def get_title_and_summary(chunk: str, url: str) -> Dict[str, str]:
             async with session.post(
                 f"{OLLAMA_BASE_URL}/api/chat",
                 json={
-                    "model": "llama3.1:latest",
+                    "model": LLM_MODEL,
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": f"URL: {url}\n\nContent:\n{chunk[:1000]}..."}
